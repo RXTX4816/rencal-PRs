@@ -8,24 +8,34 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { UntitledEventText } from "@/components/ui/untitled-event-text"
 
 import { useCalEvents } from "@/contexts/CalEventsContext"
 import { useCalendars } from "@/contexts/CalendarStateContext"
+import { useSettings } from "@/contexts/SettingsContext"
 
+import type { AllDayLaneItem } from "@/hooks/cal-events/all-day-lanes"
 import type { TimedEventItem } from "@/hooks/cal-events/useMonthEventLayout"
 import type { MonthDay } from "@/hooks/cal-events/useMonthGrid"
 import { useOpenDayDraft } from "@/hooks/useOpenDayDraft"
 import { ACTIVE_DAY_EL_ID, getLastEventEndTime } from "@/lib/active-day-draft"
 import { eventKey, type CalendarEvent } from "@/lib/cal-events"
+import { getCalendarEventStyle } from "@/lib/event-styles"
+import { formatTime, type TimeFormat } from "@/lib/event-time"
 import { getUserResponseStatus } from "@/lib/event-utils"
 import { cn } from "@/lib/utils"
 
 const MAX_TIMED_VISIBLE = 4
+// Past this, the "+n more" tooltip summarises the rest instead of growing off-screen.
+const MAX_TOOLTIP_ROWS = 12
+
+type HiddenEvent = { event: CalendarEvent; calendarColor: string | null; allDay: boolean }
 
 type MonthDayCellProps = {
   day: MonthDay
   timedEvents: TimedEventItem[]
-  hiddenAllDayCount: number
+  hiddenAllDayItems: AllDayLaneItem[]
   reservedAllDayHeight: string | null
   activeEventKey: string | null
   selectedEventKey: string | null
@@ -40,7 +50,7 @@ type MonthDayCellProps = {
 export function MonthDayCell({
   day,
   timedEvents,
-  hiddenAllDayCount,
+  hiddenAllDayItems,
   reservedAllDayHeight,
   activeEventKey,
   selectedEventKey,
@@ -57,8 +67,18 @@ export function MonthDayCell({
   const contextTargetRef = useRef<HTMLElement | null>(null)
 
   const visibleTimed = timedEvents.slice(0, MAX_TIMED_VISIBLE)
-  const hiddenTimedCount = timedEvents.length - visibleTimed.length
-  const totalHidden = hiddenAllDayCount + hiddenTimedCount
+  const hiddenEvents: HiddenEvent[] = [
+    ...hiddenAllDayItems.map((item) => ({
+      event: item.event,
+      calendarColor: item.calendarColor,
+      allDay: true,
+    })),
+    ...timedEvents.slice(MAX_TIMED_VISIBLE).map((item) => ({
+      event: item.event,
+      calendarColor: item.color,
+      allDay: false,
+    })),
+  ]
 
   const handleCreateEvent = (el: HTMLElement) => {
     openDayDraft(day.date, el, { start: getLastEventEndTime(day.date, calendarEvents) })
@@ -112,11 +132,7 @@ export function MonthDayCell({
             )
           })}
 
-          {totalHidden > 0 && (
-            <div className="pointer-events-none text-xs text-muted-foreground px-0.5 truncate shrink-0">
-              +{totalHidden} more
-            </div>
-          )}
+          {hiddenEvents.length > 0 && <HiddenEventsLabel events={hiddenEvents} />}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -131,5 +147,54 @@ export function MonthDayCell({
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+  )
+}
+
+/** "+n more" label whose tooltip lists the events that didn't fit in the cell. */
+function HiddenEventsLabel({ events }: { events: HiddenEvent[] }) {
+  const { timeFormat } = useSettings()
+  const rows = events.length > MAX_TOOLTIP_ROWS ? events.slice(0, MAX_TOOLTIP_ROWS - 1) : events
+  const rest = events.length - rows.length
+
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger asChild>
+        <div className="text-xs text-muted-foreground px-0.5 truncate shrink-0 self-start hover:text-foreground">
+          +{events.length} more
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-64 flex-col items-stretch gap-1">
+        {rows.map(({ event, calendarColor, allDay }) => (
+          <HiddenEventRow
+            key={eventKey(event)}
+            event={event}
+            calendarColor={calendarColor}
+            allDay={allDay}
+            timeFormat={timeFormat}
+          />
+        ))}
+        {rest > 0 && <span className="text-2xs opacity-70">and {rest} more</span>}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function HiddenEventRow({
+  event,
+  calendarColor,
+  allDay,
+  timeFormat,
+}: HiddenEvent & { timeFormat: TimeFormat }) {
+  return (
+    <div
+      className="flex items-center gap-1.5 min-w-0"
+      style={getCalendarEventStyle({ calendarColor, eventColor: event.color })}
+    >
+      <span className="size-2 shrink-0 rounded-full bg-(--calendar-event-color)" />
+      <span data-typography="numerical" className="text-2xs shrink-0 opacity-70">
+        {allDay ? "All day" : formatTime(event.start, timeFormat)}
+      </span>
+      <span className="truncate">{event.summary || <UntitledEventText />}</span>
+    </div>
   )
 }
