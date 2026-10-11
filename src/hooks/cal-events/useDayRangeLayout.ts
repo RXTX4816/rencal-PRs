@@ -7,6 +7,7 @@ import { DAY_MINUTES, epochDay } from "@/lib/event-time"
 import { isSpanning } from "@/lib/event-utils"
 
 import { assignAllDayLanes, buildAllDaySpan, type AllDayLaneItem } from "./all-day-lanes"
+import { layoutTimedOverlaps } from "./timed-overlaps"
 import type { MonthDay } from "./useMonthGrid"
 
 export type WeekEventDisplayMode = "xs" | "sm" | "md" | "lg"
@@ -16,8 +17,11 @@ export type WeekTimedEventLayout = {
   calendarColor: string | null
   top: number
   height: number
-  column: number
-  totalColumns: number
+  /** Horizontal box as shares (0–1) of the day's event area; see layoutTimedOverlaps. */
+  left: number
+  width: number
+  /** Share at the right edge drawn over by a neighbour, kept clear of text. */
+  coveredWidth: number
   durationMinutes: number
   displayMode: WeekEventDisplayMode
 }
@@ -54,58 +58,6 @@ function displayModeFor(durationMinutes: number): WeekEventDisplayMode {
   if (durationMinutes < 60) return "sm"
   if (durationMinutes < 75) return "md"
   return "lg"
-}
-
-/** Tolerance for float precision when comparing positions derived from minute-based math */
-const OVERLAP_EPS = 1e-5
-
-/** Assign overlap columns using a greedy sweep-line algorithm */
-export function assignOverlapColumns(events: WeekTimedEventLayout[]) {
-  if (events.length === 0) return
-
-  // Sort by top, then by height descending
-  events.sort((a, b) => a.top - b.top || b.height - a.height)
-
-  // Build collision groups: events that transitively overlap
-  const groups: WeekTimedEventLayout[][] = []
-  let currentGroup: WeekTimedEventLayout[] = [events[0]]
-  let groupEnd = events[0].top + events[0].height
-
-  for (let i = 1; i < events.length; i++) {
-    const ev = events[i]
-    if (ev.top + OVERLAP_EPS < groupEnd) {
-      // Overlaps with current group
-      currentGroup.push(ev)
-      groupEnd = Math.max(groupEnd, ev.top + ev.height)
-    } else {
-      groups.push(currentGroup)
-      currentGroup = [ev]
-      groupEnd = ev.top + ev.height
-    }
-  }
-  groups.push(currentGroup)
-
-  // For each group, assign columns
-  for (const group of groups) {
-    const columns: number[] = [] // end positions per column
-    for (const ev of group) {
-      let col = 0
-      while (col < columns.length && columns[col] > ev.top + OVERLAP_EPS) {
-        col++
-      }
-      ev.column = col
-      columns[col] = ev.top + ev.height
-
-      // Extend columns array if needed
-      if (col >= columns.length) {
-        columns.push(ev.top + ev.height)
-      }
-    }
-    const totalColumns = columns.length
-    for (const ev of group) {
-      ev.totalColumns = totalColumns
-    }
-  }
 }
 
 export function useDayRangeLayout(
@@ -161,8 +113,9 @@ export function useDayRangeLayout(
             calendarColor,
             top,
             height,
-            column: 0,
-            totalColumns: 1,
+            left: 0,
+            width: 1,
+            coveredWidth: 0,
             durationMinutes,
             displayMode: displayModeFor(durationMinutes),
           })
@@ -170,9 +123,8 @@ export function useDayRangeLayout(
       }
     }
 
-    // Assign overlap columns for each day
     for (const layouts of timedByDay.values()) {
-      assignOverlapColumns(layouts)
+      layoutTimedOverlaps(layouts)
     }
 
     const maxAllDayLane = assignAllDayLanes(allDayItems, N)

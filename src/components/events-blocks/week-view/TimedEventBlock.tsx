@@ -15,8 +15,6 @@ import { formatTime } from "@/lib/event-time"
 import { cn } from "@/lib/utils"
 
 const WEEK_EVENT_RIGHT_GAP = 12
-/** Space between overlapping events placed side by side. */
-const COLUMN_GAP = 2
 
 /**
  * Block edges shared with the create selection: the top covers the start hour's grid
@@ -30,16 +28,17 @@ export function weekEventBox(topPercent: number, heightPercent: number) {
   }
 }
 
-/**
- * Horizontal placement for an event among `totalColumns` overlapping ones: each
- * gets an equal share of the width left of the right gap, so none covers another.
- */
-function columnBox(column: number, totalColumns: number) {
-  const share = `(100% - ${WEEK_EVENT_RIGHT_GAP}px) / ${totalColumns}`
+/** Places an overlap layout's shares within the width left of the right gap. */
+function overlapBox({ left, width, coveredWidth }: WeekTimedEventLayout) {
+  const area = `(100% - ${WEEK_EVENT_RIGHT_GAP}px)`
   return {
-    left: `calc(${share} * ${column})`,
-    width: `calc(${share} - ${column < totalColumns - 1 ? COLUMN_GAP : 0}px)`,
+    left: `calc(${area} * ${left})`,
+    width: `calc(${area} * ${width})`,
     right: "auto",
+    // Wrap text before the neighbour drawn over this block's right edge.
+    paddingRight: coveredWidth
+      ? `calc(${area} * ${coveredWidth} + var(--event-padding-inline))`
+      : undefined,
   }
 }
 
@@ -101,9 +100,9 @@ function WeekTimedEventImpl({
       )}
       style={{
         ...weekEventBox(layout.top, layout.height),
-        ...columnBox(layout.column, layout.totalColumns),
-        // Lift the preview above overlapping neighbours so its ring stays visible.
-        zIndex: isDragPreview ? 10 : layout.column,
+        ...overlapBox(layout),
+        // Overlaps paint in layout order; lift the preview above them so its ring stays visible.
+        zIndex: isDragPreview ? 10 : undefined,
         ...getCalendarEventStyle({
           calendarColor: layout.calendarColor,
           eventColor: layout.event.color,
