@@ -1,6 +1,7 @@
 import { memo, useRef, useState } from "react"
 
 import { EventContextMenu } from "@/components/EventContextMenu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { UntitledEventText } from "@/components/ui/untitled-event-text"
 
 import { useEventDragHandle, useEventDragRole } from "@/contexts/EventDragContext"
@@ -13,6 +14,10 @@ import { getCalendarEventStyle } from "@/lib/event-styles"
 import { formatTime } from "@/lib/event-time"
 import { cn } from "@/lib/utils"
 
+const WEEK_EVENT_RIGHT_GAP = 12
+/** Space between overlapping events placed side by side. */
+const COLUMN_GAP = 2
+
 /**
  * Block edges shared with the create selection: the top covers the start hour's grid
  * line, the bottom stops short of the end hour's, and a right gap keeps the column clickable.
@@ -21,7 +26,20 @@ export function weekEventBox(topPercent: number, heightPercent: number) {
   return {
     top: `calc(${topPercent}% - 1px)`,
     height: `max(calc(${heightPercent}% - 3px), 1rem)`,
-    right: 12,
+    right: WEEK_EVENT_RIGHT_GAP,
+  }
+}
+
+/**
+ * Horizontal placement for an event among `totalColumns` overlapping ones: each
+ * gets an equal share of the width left of the right gap, so none covers another.
+ */
+function columnBox(column: number, totalColumns: number) {
+  const share = `(100% - ${WEEK_EVENT_RIGHT_GAP}px) / ${totalColumns}`
+  return {
+    left: `calc(${share} * ${column})`,
+    width: `calc(${share} - ${column < totalColumns - 1 ? COLUMN_GAP : 0}px)`,
+    right: "auto",
   }
 }
 
@@ -42,6 +60,7 @@ function WeekTimedEventImpl({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [contextOpen, setContextOpen] = useState(false)
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const { timeFormat } = useSettings()
 
   const dragRole = useEventDragRole(layout.event)
@@ -53,11 +72,6 @@ function WeekTimedEventImpl({
     disabled: isStatic,
     float: "block",
   })
-
-  // Cascade layout: each overlap depth indents from the left by a fixed percentage and
-  // extends to the right gap, so the earlier/outer event remains fully visible beneath.
-  const CASCADE_OFFSET_PCT = 15
-  const leftPercent = layout.column * CASCADE_OFFSET_PCT
 
   const highlighted = highlightedByParent || contextOpen
 
@@ -87,7 +101,7 @@ function WeekTimedEventImpl({
       )}
       style={{
         ...weekEventBox(layout.top, layout.height),
-        left: `${leftPercent}%`,
+        ...columnBox(layout.column, layout.totalColumns),
         // Lift the preview above overlapping neighbours so its ring stays visible.
         zIndex: isDragPreview ? 10 : layout.column,
         ...getCalendarEventStyle({
@@ -164,7 +178,23 @@ function WeekTimedEventImpl({
 
   return (
     <EventContextMenu event={layout.event} anchorRef={ref} onOpenChange={setContextOpen}>
-      {inner}
+      <Tooltip
+        delayDuration={500}
+        // Stay out of the way while the event is being dragged or its menu is open.
+        open={tooltipOpen && !dragRole && !contextOpen}
+        onOpenChange={setTooltipOpen}
+      >
+        <TooltipTrigger asChild>{inner}</TooltipTrigger>
+        <TooltipContent side="right" className="max-w-64 flex-col items-start gap-0.5">
+          <span className="font-medium wrap-break-word">{summary}</span>
+          <span>
+            {startTime} – {endTime}
+          </span>
+          {layout.event.location && (
+            <span className="wrap-break-word">{layout.event.location}</span>
+          )}
+        </TooltipContent>
+      </Tooltip>
     </EventContextMenu>
   )
 }

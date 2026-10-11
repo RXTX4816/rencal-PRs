@@ -60,7 +60,7 @@ function displayModeFor(durationMinutes: number): WeekEventDisplayMode {
 const OVERLAP_EPS = 1e-5
 
 /** Assign overlap columns using a greedy sweep-line algorithm */
-function assignOverlapColumns(events: WeekTimedEventLayout[]) {
+export function assignOverlapColumns(events: WeekTimedEventLayout[]) {
   if (events.length === 0) return
 
   // Sort by top, then by height descending
