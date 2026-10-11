@@ -68,7 +68,8 @@ export function MonthTimedEvent({
           ? undefined
           : (e) => {
               e.stopPropagation()
-              setEventAnchor(e.currentTarget)
+              // Overflow rows unmount on close, so the tooltip anchors to its label instead.
+              if (!inOverflow) setEventAnchor(e.currentTarget)
               onClick()
             }
       }

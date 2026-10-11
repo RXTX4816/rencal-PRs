@@ -4,7 +4,6 @@ import {
   useState,
   type ComponentProps,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react"
 
 import { MonthAllDayEvent } from "@/components/events-blocks/month-view/AllDayEventBlock"
@@ -37,6 +36,11 @@ const MAX_TOOLTIP_ROWS = 12
 type HiddenEvent =
   | { kind: "all-day"; item: AllDayLaneItem }
   | { kind: "timed"; item: TimedEventItem }
+
+type EventBlockProps = Pick<
+  ComponentProps<typeof MonthTimedEvent>,
+  "highlighted" | "rsvp" | "isDraft" | "dimmed"
+>
 
 type MonthDayCellProps = {
   day: MonthDay
@@ -78,7 +82,7 @@ export function MonthDayCell({
     ...timedEvents.slice(MAX_TIMED_VISIBLE).map((item) => ({ kind: "timed" as const, item })),
   ]
 
-  const eventProps = (event: CalendarEvent) => {
+  const eventProps = (event: CalendarEvent): EventBlockProps => {
     const key = eventKey(event)
     return {
       highlighted: key === activeEventKey || key === selectedEventKey,
@@ -140,14 +144,7 @@ export function MonthDayCell({
           {hiddenEvents.length > 0 && (
             <HiddenEventsLabel
               events={hiddenEvents}
-              renderEvent={(hidden, onClick) => (
-                <HiddenEventRow
-                  key={eventKey(hidden.item.event)}
-                  hidden={hidden}
-                  {...eventProps(hidden.item.event)}
-                  onClick={onClick}
-                />
-              )}
+              eventProps={eventProps}
               onEventClick={onEventClick}
             />
           )}
@@ -171,11 +168,11 @@ export function MonthDayCell({
 /** "+n more" label whose tooltip lists the events that didn't fit in the cell. */
 function HiddenEventsLabel({
   events,
-  renderEvent,
+  eventProps,
   onEventClick,
 }: {
   events: HiddenEvent[]
-  renderEvent: (hidden: HiddenEvent, onClick: () => void) => ReactNode
+  eventProps: (event: CalendarEvent) => EventBlockProps
   onEventClick: (eventKey: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -184,7 +181,7 @@ function HiddenEventsLabel({
   const rest = events.length - rows.length
 
   const handleEventClick = (key: string) => {
-    // Re-anchor to the label: the row unmounts once the tooltip closes.
+    // Anchor to the label: the row unmounts once the tooltip closes.
     setEventAnchor(labelRef.current)
     setOpen(false)
     onEventClick(key)
@@ -211,9 +208,17 @@ function HiddenEventsLabel({
         onDoubleClick={stopPropagation}
         onContextMenu={stopPropagation}
       >
-        {rows.map((hidden) =>
-          renderEvent(hidden, () => handleEventClick(eventKey(hidden.item.event))),
-        )}
+        {rows.map((hidden) => {
+          const key = eventKey(hidden.item.event)
+          return (
+            <HiddenEventRow
+              key={key}
+              hidden={hidden}
+              {...eventProps(hidden.item.event)}
+              onClick={() => handleEventClick(key)}
+            />
+          )
+        })}
         {rest > 0 && <span className="text-2xs opacity-70 px-1.5">and {rest} more</span>}
       </TooltipContent>
     </Tooltip>
@@ -223,7 +228,7 @@ function HiddenEventsLabel({
 function HiddenEventRow({
   hidden,
   ...props
-}: { hidden: HiddenEvent } & Omit<ComponentProps<typeof MonthTimedEvent>, "item" | "inOverflow">) {
+}: { hidden: HiddenEvent; onClick: () => void } & EventBlockProps) {
   return hidden.kind === "all-day" ? (
     <MonthAllDayEvent item={hidden.item} inOverflow {...props} />
   ) : (

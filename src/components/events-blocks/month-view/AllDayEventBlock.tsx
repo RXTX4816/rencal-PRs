@@ -45,7 +45,8 @@ export function MonthAllDayEvent({
   const handleClick: MouseEventHandler<HTMLDivElement> | undefined = (e) => {
     if (!isStatic) {
       e.stopPropagation()
-      setEventAnchor(fillsRow ? pointAnchorFromClick(e) : e.currentTarget)
+      // Overflow rows unmount on close, so the tooltip anchors to its label instead.
+      if (!inOverflow) setEventAnchor(fillsRow ? pointAnchorFromClick(e) : e.currentTarget)
       onClick()
     }
   }
