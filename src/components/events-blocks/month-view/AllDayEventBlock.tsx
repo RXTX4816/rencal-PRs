@@ -18,6 +18,7 @@ export function MonthAllDayEvent({
   rsvp,
   isDraft,
   dimmed,
+  inOverflow = false,
   onClick,
 }: {
   item: AllDayLaneItem
@@ -25,6 +26,8 @@ export function MonthAllDayEvent({
   rsvp: ResponseStatus | null
   isDraft: boolean
   dimmed: boolean
+  /** Listed in the "+n more" tooltip as a plain row, which unmounts on close: no drag or context menu. */
+  inOverflow?: boolean
   onClick: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -34,7 +37,7 @@ export function MonthAllDayEvent({
   const isDragPreview = dragRole === "preview"
   // Drafts and drag previews are stand-ins: no click, no context menu, no drag.
   const isStatic = isDraft || isDragPreview
-  const onDragPointerDown = useEventDragHandle(item.event, { disabled: isStatic })
+  const onDragPointerDown = useEventDragHandle(item.event, { disabled: isStatic || inOverflow })
 
   const highlighted = highlightedByParent || contextOpen
   const fillsRow = item.endCol - item.startCol === 7
@@ -60,12 +63,13 @@ export function MonthAllDayEvent({
       data-drag-state={dragRole ?? undefined}
       data-event-clickable={!isStatic || undefined}
       className={cn(
-        "absolute truncate px-(--event-padding-inline) py-px text-xs cursor-default",
-        item.isStart && "rounded-l-xs",
-        item.isEnd && "rounded-r-xs",
+        "truncate px-(--event-padding-inline) py-px text-xs cursor-default",
+        inOverflow ? "shrink-0 rounded-xs" : "absolute",
+        !inOverflow && item.isStart && "rounded-l-xs",
+        !inOverflow && item.isEnd && "rounded-r-xs",
       )}
       style={{
-        ...allDayBarStyle(item, item.lane),
+        ...(!inOverflow && allDayBarStyle(item, item.lane)),
         ...getCalendarEventStyle({
           calendarColor: item.calendarColor,
           eventColor: item.event.color,
@@ -78,7 +82,7 @@ export function MonthAllDayEvent({
     </div>
   )
 
-  if (isStatic) return inner
+  if (isStatic || inOverflow) return inner
 
   return (
     <EventContextMenu event={item.event} anchorRef={ref} onOpenChange={setContextOpen}>

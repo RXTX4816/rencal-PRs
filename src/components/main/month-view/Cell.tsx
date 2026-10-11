@@ -1,6 +1,13 @@
 import { Temporal } from "@js-temporal/polyfill"
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
+import {
+  useRef,
+  useState,
+  type ComponentProps,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react"
 
+import { MonthAllDayEvent } from "@/components/events-blocks/month-view/AllDayEventBlock"
 import { MonthTimedEvent } from "@/components/events-blocks/month-view/TimedEventBlock"
 import {
   ContextMenu,
@@ -9,21 +16,17 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { UntitledEventText } from "@/components/ui/untitled-event-text"
 
 import { useCalEvents } from "@/contexts/CalEventsContext"
 import { useCalendars } from "@/contexts/CalendarStateContext"
-import { useSettings } from "@/contexts/SettingsContext"
 
 import type { AllDayLaneItem } from "@/hooks/cal-events/all-day-lanes"
 import type { TimedEventItem } from "@/hooks/cal-events/useMonthEventLayout"
 import type { MonthDay } from "@/hooks/cal-events/useMonthGrid"
 import { useOpenDayDraft } from "@/hooks/useOpenDayDraft"
 import { ACTIVE_DAY_EL_ID, getLastEventEndTime } from "@/lib/active-day-draft"
-import { eventKey, type CalendarEvent, type ResponseStatus } from "@/lib/cal-events"
+import { eventKey, type CalendarEvent } from "@/lib/cal-events"
 import { setEventAnchor } from "@/lib/event-anchor"
-import { getCalendarEventStyle } from "@/lib/event-styles"
-import { formatTime, type TimeFormat } from "@/lib/event-time"
 import { getUserResponseStatus } from "@/lib/event-utils"
 import { cn } from "@/lib/utils"
 
@@ -31,13 +34,9 @@ const MAX_TIMED_VISIBLE = 4
 // Past this, the "+n more" tooltip summarises the rest instead of growing off-screen.
 const MAX_TOOLTIP_ROWS = 12
 
-type HiddenEvent = {
-  event: CalendarEvent
-  calendarColor: string | null
-  allDay: boolean
-  highlighted: boolean
-  rsvp: ResponseStatus | null
-}
+type HiddenEvent =
+  | { kind: "all-day"; item: AllDayLaneItem }
+  | { kind: "timed"; item: TimedEventItem }
 
 type MonthDayCellProps = {
   day: MonthDay
@@ -74,26 +73,20 @@ export function MonthDayCell({
   const contextTargetRef = useRef<HTMLElement | null>(null)
 
   const visibleTimed = timedEvents.slice(0, MAX_TIMED_VISIBLE)
-  const toHiddenEvent = (
-    event: CalendarEvent,
-    calendarColor: string | null,
-    allDay: boolean,
-  ): HiddenEvent => {
+  const hiddenEvents: HiddenEvent[] = [
+    ...hiddenAllDayItems.map((item) => ({ kind: "all-day" as const, item })),
+    ...timedEvents.slice(MAX_TIMED_VISIBLE).map((item) => ({ kind: "timed" as const, item })),
+  ]
+
+  const eventProps = (event: CalendarEvent) => {
     const key = eventKey(event)
     return {
-      event,
-      calendarColor,
-      allDay,
       highlighted: key === activeEventKey || key === selectedEventKey,
       rsvp: getUserResponseStatus(event, calendars),
+      isDraft: event === draftEvent,
+      dimmed,
     }
   }
-  const hiddenEvents: HiddenEvent[] = [
-    ...hiddenAllDayItems.map((item) => toHiddenEvent(item.event, item.calendarColor, true)),
-    ...timedEvents
-      .slice(MAX_TIMED_VISIBLE)
-      .map((item) => toHiddenEvent(item.event, item.color, false)),
-  ]
 
   const handleCreateEvent = (el: HTMLElement) => {
     openDayDraft(day.date, el, { start: getLastEventEndTime(day.date, calendarEvents) })
@@ -138,17 +131,25 @@ export function MonthDayCell({
               <MonthTimedEvent
                 key={key}
                 item={item}
-                highlighted={key === activeEventKey || key === selectedEventKey}
-                rsvp={getUserResponseStatus(item.event, calendars)}
-                isDraft={item.event === draftEvent}
-                dimmed={dimmed}
+                {...eventProps(item.event)}
                 onClick={() => onEventClick(key)}
               />
             )
           })}
 
           {hiddenEvents.length > 0 && (
-            <HiddenEventsLabel events={hiddenEvents} onEventClick={onEventClick} />
+            <HiddenEventsLabel
+              events={hiddenEvents}
+              renderEvent={(hidden, onClick) => (
+                <HiddenEventRow
+                  key={eventKey(hidden.item.event)}
+                  hidden={hidden}
+                  {...eventProps(hidden.item.event)}
+                  onClick={onClick}
+                />
+              )}
+              onEventClick={onEventClick}
+            />
           )}
         </div>
       </ContextMenuTrigger>
@@ -170,19 +171,20 @@ export function MonthDayCell({
 /** "+n more" label whose tooltip lists the events that didn't fit in the cell. */
 function HiddenEventsLabel({
   events,
+  renderEvent,
   onEventClick,
 }: {
   events: HiddenEvent[]
+  renderEvent: (hidden: HiddenEvent, onClick: () => void) => ReactNode
   onEventClick: (eventKey: string) => void
 }) {
-  const { timeFormat } = useSettings()
   const [open, setOpen] = useState(false)
   const labelRef = useRef<HTMLDivElement>(null)
   const rows = events.length > MAX_TOOLTIP_ROWS ? events.slice(0, MAX_TOOLTIP_ROWS - 1) : events
   const rest = events.length - rows.length
 
   const handleEventClick = (key: string) => {
-    // Anchor to the label: the row unmounts once the tooltip closes.
+    // Re-anchor to the label: the row unmounts once the tooltip closes.
     setEventAnchor(labelRef.current)
     setOpen(false)
     onEventClick(key)
@@ -209,53 +211,22 @@ function HiddenEventsLabel({
         onDoubleClick={stopPropagation}
         onContextMenu={stopPropagation}
       >
-        {rows.map((hidden) => {
-          const key = eventKey(hidden.event)
-          return (
-            <HiddenEventRow
-              key={key}
-              {...hidden}
-              timeFormat={timeFormat}
-              onClick={() => handleEventClick(key)}
-            />
-          )
-        })}
+        {rows.map((hidden) =>
+          renderEvent(hidden, () => handleEventClick(eventKey(hidden.item.event))),
+        )}
         {rest > 0 && <span className="text-2xs opacity-70 px-1.5">and {rest} more</span>}
       </TooltipContent>
     </Tooltip>
   )
 }
 
-/** Mirrors `MonthTimedEvent` so hidden events get the same theme styles, minus drag and context menu. */
 function HiddenEventRow({
-  event,
-  calendarColor,
-  allDay,
-  highlighted,
-  rsvp,
-  timeFormat,
-  onClick,
-}: HiddenEvent & { timeFormat: TimeFormat; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      data-slot="calendar-event"
-      data-view="month"
-      data-kind="timed"
-      data-selected={highlighted || undefined}
-      data-rsvp={rsvp ?? undefined}
-      data-event-clickable
-      className="flex items-center gap-(--event-padding-inline) pr-(--event-padding-inline) text-xs text-left truncate cursor-default rounded-xs shrink-0 outline-none"
-      style={getCalendarEventStyle({ calendarColor, eventColor: event.color })}
-      onClick={onClick}
-    >
-      <div data-slot="calendar-event-color-marker" className="w-0.5 self-stretch shrink-0" />
-      <span className="truncate">
-        <span data-slot="calendar-event-time" data-typography="numerical" className="text-2xs">
-          {allDay ? "All day" : formatTime(event.start, timeFormat)}
-        </span>{" "}
-        <span data-slot="calendar-event-title">{event.summary || <UntitledEventText />}</span>
-      </span>
-    </button>
+  hidden,
+  ...props
+}: { hidden: HiddenEvent } & Omit<ComponentProps<typeof MonthTimedEvent>, "item" | "inOverflow">) {
+  return hidden.kind === "all-day" ? (
+    <MonthAllDayEvent item={hidden.item} inOverflow {...props} />
+  ) : (
+    <MonthTimedEvent item={hidden.item} inOverflow {...props} />
   )
 }

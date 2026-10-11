@@ -19,6 +19,7 @@ export function MonthTimedEvent({
   rsvp,
   isDraft,
   dimmed,
+  inOverflow = false,
   onClick,
 }: {
   item: TimedEventItem
@@ -26,6 +27,8 @@ export function MonthTimedEvent({
   rsvp: ResponseStatus | null
   isDraft: boolean
   dimmed: boolean
+  /** Listed in the "+n more" tooltip, which unmounts it on close: no drag or context menu. */
+  inOverflow?: boolean
   onClick: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -36,7 +39,7 @@ export function MonthTimedEvent({
   const isDragPreview = dragRole === "preview"
   // Drafts and drag previews are stand-ins: no click, no context menu, no drag.
   const isStatic = isDraft || isDragPreview
-  const onDragPointerDown = useEventDragHandle(item.event, { disabled: isStatic })
+  const onDragPointerDown = useEventDragHandle(item.event, { disabled: isStatic || inOverflow })
 
   const highlighted = highlightedByParent || contextOpen
 
@@ -70,7 +73,7 @@ export function MonthTimedEvent({
             }
       }
     >
-      <div data-slot="calendar-event-color-marker" className="w-0.5 h-full shrink-0" />
+      <div data-slot="calendar-event-color-marker" className="w-0.5 self-stretch shrink-0" />
       <span className="truncate">
         <span data-slot="calendar-event-time" data-typography="numerical" className="text-2xs">
           {formatTime(item.event.start, timeFormat)}
@@ -80,7 +83,7 @@ export function MonthTimedEvent({
     </div>
   )
 
-  if (isStatic) return inner
+  if (isStatic || inOverflow) return inner
 
   return (
     <EventContextMenu event={item.event} anchorRef={ref} onOpenChange={setContextOpen}>
