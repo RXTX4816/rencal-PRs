@@ -76,6 +76,10 @@ test:
 debug flags="*": ensure-providers
   VITE_RENCAL_DEBUG={{flags}} pnpm tauri dev
 
+# Seed local-only calendars with edge-case events, e.g. `just fixtures overlaps "next week"`
+fixtures scenario="all" week="today":
+  scripts/seed-fixtures.sh "{{scenario}}" "{{week}}"
+
 # Analyze which parts of app are slow based on ChromeDevTool recording:
 analyze path:
   bun scripts/analyze-recording.ts {{path}}

@@ -9,6 +9,7 @@ renCal is a Tauri v2 calendar app for Omarchy. Rust backend in `src-tauri/src/`,
 - `just test`: frontend + Rust tests, verifies `src/rpc/bindings.ts` is up to date
 - `just gen-types`: regenerate TypeScript taurpc bindings from Rust
 - `just debug [flags]`: run the app with `VITE_RENCAL_DEBUG` enabled
+- `just fixtures [scenario] [week]`: seed local-only `fixtures-*` calendars in the active caldir with edge-case events (`scripts/seed-fixtures.sh`)
 
 `.agents/hooks/post-edit.sh` runs tsc/eslint or `cargo check` for an edited file (wired up as a post-edit hook where the agent supports it). Run `just check` before handing work over.
 
