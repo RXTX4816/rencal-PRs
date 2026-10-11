@@ -160,18 +160,21 @@ export const MonthWeekRow = memo(function MonthWeekRow({
 
         {/* Timed events */}
         {weekDays.map((day, colIndex) => {
-          const allDayOnDay = packedLaneItems.filter(
-            (item) => item.startCol <= colIndex + 1 && item.endCol > colIndex + 1,
-          )
-          const visibleAllDayOnDay = allDayOnDay.filter((item) => item.lane < MAX_ALL_DAY_LANES)
-          const hiddenAllDay = allDayOnDay.length - visibleAllDayOnDay.length
+          const hiddenAllDay = packedAllDayEvents
+            .filter(
+              (item) =>
+                item.lane >= MAX_ALL_DAY_LANES &&
+                item.startCol <= colIndex + 1 &&
+                item.endCol > colIndex + 1,
+            )
+            .sort((a, b) => a.lane - b.lane)
 
           return (
             <MonthDayCell
               key={day.dateKey}
               day={day}
               timedEvents={layout.timedByCol[colIndex]}
-              hiddenAllDayCount={hiddenAllDay}
+              hiddenAllDayItems={hiddenAllDay}
               reservedAllDayHeight={reservedAllDayHeight(reservedLanes[colIndex])}
               activeEventKey={activeEventKey}
               selectedEventKey={selectedEventKey}
